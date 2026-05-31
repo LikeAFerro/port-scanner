@@ -5,9 +5,11 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 result_t scan_port(const char* ip, uint16_t port) {
-    int fd = socket(AF_INET, SOCK_STREAM, 0); // Create a file descriptor for a TCP socket
+    // Create a file descriptor for a TCP socket
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == -1) {
         perror("socket");
         // If socket creation fails, print an error message and exit with status 1
@@ -64,4 +66,15 @@ result_t scan_port(const char* ip, uint16_t port) {
     close(fd);
 
     return result;
+}
+
+int string_to_port(const char* str, uint16_t* port) {
+    char* endptr;
+    errno = 0;
+    unsigned long val = strtoul(str, &endptr, 10);
+    if (*endptr != '\0' || val > 65535 || errno == ERANGE) {
+        return -1;
+    }
+    *port = (uint16_t)val;
+    return 0;
 }
