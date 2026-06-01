@@ -31,26 +31,26 @@ parse_result_t parse_arguments(int argc, char *argv[], config_t *config) {
         {"verbose", no_argument, NULL, 'v'},
         {NULL, 0, NULL, 0} // Sentinel to mark the end of the array
     };
-    uint16_t port, min_port, max_port;
+
     bool port_provided = false, min_port_provided = false, max_port_provided = false;
 
     // Use getopt to parse command-line options and their arguments
     while ((opt = getopt_long(argc, argv, ":p:f:t:hv", long_options, NULL)) != -1) {
         switch (opt) {
         case 'p':
-            if (string_to_port(optarg, &port) != OK) {
+            if (string_to_port(optarg, &config->min_port) != OK) {
                 return INVALID_PORT;
             }
             port_provided = true;
             break;
         case 'f':
-            if (string_to_port(optarg, &min_port) != OK) {
+            if (string_to_port(optarg, &config->min_port) != OK) {
                 return INVALID_PORT;
             }
             min_port_provided = true;
             break;
         case 't':
-            if (string_to_port(optarg, &max_port) != OK) {
+            if (string_to_port(optarg, &config->max_port) != OK) {
                 return INVALID_PORT;
             }
             max_port_provided = true;
@@ -74,15 +74,15 @@ parse_result_t parse_arguments(int argc, char *argv[], config_t *config) {
         return INVALID_ARGUMENTS;
     }
     if (port_provided) {
-        min_port = max_port = port;
+        config->max_port = config->min_port;
     } else {
         if (!min_port_provided) {
-            min_port = 1;
+            config->min_port = 1;
         }
         if (!max_port_provided) {
-            max_port = 65535;
+            config->max_port = 65535;
         }
-        if (min_port > max_port) {
+        if (config->min_port > config->max_port) {
             return INVALID_ARGUMENTS;
         }
     }
