@@ -1,6 +1,7 @@
 #include "assets.h"
 #include <errno.h>
 #include <getopt.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,29 +14,14 @@ parse_result_t parse_arguments(int argc, char *argv[], config_t *config) {
     if (argc < 2) {
         return INVALID_ARGUMENTS;
     }
-    // Check if the first argument is a valid IP address (not starting with '-')
-    if (argv[1][0] == '-') {
-        if (argv[1][1] == 'h' || strcmp(argv[1], "--help") == 0) {
-            return HELP;
-        }
-        return INVALID_IP_ADDRESS;
-    }
-    snprintf(config->ip, sizeof(config->ip), "%s", argv[1]);
 
     int opt;
-    struct option long_options[] = {
-        {"port", required_argument, NULL, 'p'},
-        {"from", required_argument, NULL, 'f'},
-        {"to", required_argument, NULL, 't'},
-        {"help", no_argument, NULL, 'h'},
-        {"verbose", no_argument, NULL, 'v'},
-        {NULL, 0, NULL, 0} // Sentinel to mark the end of the array
-    };
+    static struct option long_options[] = {OPTIONS(MAKE_OPTION){NULL, 0, NULL, 0}};
 
     bool port_provided = false, min_port_provided = false, max_port_provided = false;
 
     // Use getopt to parse command-line options and their arguments
-    while ((opt = getopt_long(argc, argv, ":p:f:t:hv", long_options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, OPTSTRING, long_options, NULL)) != -1) {
         switch (opt) {
         case 'p':
             if (string_to_port(optarg, &config->min_port) != OK) {
@@ -59,8 +45,7 @@ parse_result_t parse_arguments(int argc, char *argv[], config_t *config) {
             config->verbose = true;
             break;
         case 'h':
-            help();
-            exit(0);
+            return HELP;
         case ':':
             return INVALID_ARGUMENTS;
             break;
@@ -68,6 +53,12 @@ parse_result_t parse_arguments(int argc, char *argv[], config_t *config) {
             return INVALID_ARGUMENTS;
         }
     }
+
+    // The remaining non-option argument should be the target IP address
+    if (optind >= argc) {
+        return INVALID_ARGUMENTS;
+    }
+    snprintf(config->ip, sizeof(config->ip), "%s", argv[optind]);
 
     // Scan the specified ports based on the provided options
     if (port_provided && (min_port_provided || max_port_provided)) {
@@ -100,82 +91,66 @@ parse_result_t string_to_port(const char *str, uint16_t *port) {
     return OK;
 }
 
-scan_result_t scan_port(const char *ip, uint16_t port) {
-    // Create a file descriptor for a TCP socket
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == -1) {
-        perror("socket");
-        // If socket creation fails, print an error message and exit with status 1
+scan_result_t scan_port(const config_t *config, uint16_t port) {
+    int fd;
+    struct addrinfo hints, *res, *p;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC; // Allow for both IPv4 and IPv6
+    hints.ai_socktype = SOCK_STREAM;
+
+    char port_str[6];
+    snprintf(port_str, sizeof(port_str), "%d", port);
+
+    // Use getaddrinfo to resolve the IP address and port into a list of address structures
+    if (getaddrinfo(config->ip, port_str, &hints, &res) != 0) {
         return UNKNOWN;
     }
 
-    // Define a structure to hold the server address
-    struct sockaddr_in server_addr;
-    // Set the address family to IPv4
-    server_addr.sin_family = AF_INET;
-    // Set the port number to the provided port and convert it to network byte
-    // order
-    server_addr.sin_port = htons(port);
-    // Convert the IP address from text to binary form and store it in the
-    // structure
-    if (inet_pton(AF_INET, ip, &server_addr.sin_addr) != 1) {
-        fprintf(stderr, "Invalid IP address: %s\n", ip);
-        // If the IP address is invalid, print an error message and exit with status
-        // 1
-        close(fd);
-        return UNKNOWN;
-    }
+    scan_result_t final_result = UNKNOWN;
 
-    // Define a structure to specify the timeout for sending data on the socket
-    struct timeval timeout = {1, 0};
-    // Set the socket option to specify the send and receive timeout for the
-    // socket
-    if (setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) == -1) {
-        perror("setsockopt(SO_SNDTIMEO)");
-        close(fd);
-        return UNKNOWN;
-    }
-    if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1) {
-        perror("setsockopt(SO_RCVTIMEO)");
-        close(fd);
-        return UNKNOWN;
-    }
+    for (p = res; p; p = p->ai_next) {
+        fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (fd == -1) {
+            continue; // Try the next address if socket creation fails
+        }
 
-    scan_result_t result;
-    // Attempt to connect to the server using the specified address and port
-    // Note that the casting is necessary because connect() expects a pointer to a
-    // struct sockaddr, and server_addr is of type struct sockaddr_in
-    if (connect(fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0) {
-        result = OPEN;
-    } else {
-        int err = errno;
-        if (err == ECONNREFUSED) {
-            result = CLOSED;
-        } else if (err == ETIMEDOUT || err == EAGAIN || err == EINPROGRESS || err == ENETUNREACH ||
-                   err == EHOSTUNREACH) {
-            result = FILTERED;
+        // Set a timeout for the connect operation to avoid hanging indefinitely
+        struct timeval timeout = {1, 0};
+        if (setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout))) {
+            close(fd);
+            continue;
+        }
+        if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout))) {
+            close(fd);
+            continue;
+        }
+
+        if (connect(fd, p->ai_addr, p->ai_addrlen) == 0) {
+            close(fd);
+            final_result = OPEN;
+            break; // Stop scanning if we find an open port
         } else {
-            result = UNKNOWN;
+            int err = errno;
+            close(fd);
+            if (err == ECONNREFUSED) {
+                final_result = CLOSED;
+            } else if (err == ETIMEDOUT || err == EAGAIN || err == EINPROGRESS ||
+                       err == ENETUNREACH || err == EHOSTUNREACH) {
+                final_result = FILTERED;
+            } else {
+                final_result = UNKNOWN;
+            }
         }
     }
 
-    // Close the socket file descriptor
-    close(fd);
+    freeaddrinfo(res);
 
-    return result;
+    return final_result;
 }
 
 void help(void) {
     printf("Usage: port-scanner {target_ip} [options]\n");
     printf("Example: port-scanner 192.168.1.1 -f 1 -t 1000\n");
     printf("Target IP address is required. Options:\n");
-    printf("  -p {port}   Specify a single port to scan\n");
-    printf("  -f {port}   Specify the minimum port to scan\n");
-    printf("  -t {port}   Specify the maximum port to scan\n");
-    printf("  -v          Enable verbose output (show closed ports)\n");
-    printf("  -h, --help  Display this help message\n");
-    printf("If no options are provided, the program will scan all ports from 1 to 65535.\n");
-    printf("Return values:\n");
-    printf("0: Scan completed successfully\n");
-    printf("1: Invalid command-line arguments\n");
+    OPTIONS(MAKE_HELP)
 }

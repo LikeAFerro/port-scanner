@@ -4,15 +4,12 @@
 
 int main(int argc, char *argv[]) {
 
-    config_t config;
+    config_t config = {0};
     parse_result_t parse_result = parse_arguments(argc, argv, &config);
     switch (parse_result) {
     case INVALID_ARGUMENTS:
         fprintf(
             stderr, "Error parsing arguments. Check %s --help for usage information.\n", argv[0]);
-        exit(1);
-    case INVALID_IP_ADDRESS:
-        fprintf(stderr, "Error: Invalid IP address.\n");
         exit(1);
     case INVALID_PORT:
         fprintf(stderr, "Error: Invalid port number.\n");
@@ -27,7 +24,7 @@ int main(int argc, char *argv[]) {
     for (int p = config.min_port; p <= config.max_port; p++) {
         // Call the scan_port function to check the status of the specified port on
         // the given IP address
-        scan_result_t result = scan_port(config.ip, p);
+        scan_result_t result = scan_port(&config, p);
 
         // Print the result of the port scan based on the value returned by
         // scan_port

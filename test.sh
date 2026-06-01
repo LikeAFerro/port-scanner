@@ -32,7 +32,7 @@ check_fail() {  # Check that the command fails (non-zero exit code)
 check_output() {
     local desc="$1"; local pattern="$2"; shift 2    # Description and regex pattern to check in output
     local out
-    out=$("$@" 2>/dev/null) # Run the command and capture its output, ignoring stderr
+    out=$("$@" 2>/dev/null || true) # Run the command and capture its output, ignoring stderr
     if echo "$out" | grep -qE "$pattern"; then  # Check if the output matches the expected pattern
         echo "  PASS: $desc (output: $out)"
         ((++PASS))
@@ -46,7 +46,8 @@ echo "=== Valid usage ==="
 check_pass  "help flag"             $SCANNER --help
 check_pass  "single port"           $SCANNER 127.0.0.1 -p 80
 check_pass  "port range"            $SCANNER 127.0.0.1 -f 80 -t 90
-check_pass  "all ports (small run)" $SCANNER 127.0.0.1 -f 1 -t 20
+check_pass  "all ports (well known)" $SCANNER 127.0.0.1 -f 1 -t 1024
+check_pass  "ipv6 integration"      $SCANNER ::1 -p 80
 
 echo "=== Output validation ==="
 check_pass "port 22 has a result"   $SCANNER 127.0.0.1 -p 22
