@@ -1,13 +1,106 @@
 #include "assets.h"
-#include <arpa/inet.h>
 #include <errno.h>
+#include <getopt.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
-result_t scan_port(const char *ip, uint16_t port) {
+parse_result_t parse_arguments(int argc, char *argv[], config_t *config) {
+    // Check if the required arguments are provided (at least the IP address)
+    if (argc < 2) {
+        return INVALID_ARGUMENTS;
+    }
+    // Check if the first argument is a valid IP address (not starting with '-')
+    if (argv[1][0] == '-') {
+        if (argv[1][1] == 'h' || strcmp(argv[1], "--help") == 0) {
+            return HELP;
+        }
+        return INVALID_IP_ADDRESS;
+    }
+    snprintf(config->ip, sizeof(config->ip), "%s", argv[1]);
+
+    int opt;
+    struct option long_options[] = {
+        {"port", required_argument, NULL, 'p'},
+        {"from", required_argument, NULL, 'f'},
+        {"to", required_argument, NULL, 't'},
+        {"help", no_argument, NULL, 'h'},
+        {"verbose", no_argument, NULL, 'v'},
+        {NULL, 0, NULL, 0} // Sentinel to mark the end of the array
+    };
+    uint16_t port, min_port, max_port;
+    bool port_provided = false, min_port_provided = false, max_port_provided = false;
+
+    // Use getopt to parse command-line options and their arguments
+    while ((opt = getopt_long(argc, argv, ":p:f:t:hv", long_options, NULL)) != -1) {
+        switch (opt) {
+        case 'p':
+            if (string_to_port(optarg, &port) != OK) {
+                return INVALID_PORT;
+            }
+            port_provided = true;
+            break;
+        case 'f':
+            if (string_to_port(optarg, &min_port) != OK) {
+                return INVALID_PORT;
+            }
+            min_port_provided = true;
+            break;
+        case 't':
+            if (string_to_port(optarg, &max_port) != OK) {
+                return INVALID_PORT;
+            }
+            max_port_provided = true;
+            break;
+        case 'v':
+            config->verbose = true;
+            break;
+        case 'h':
+            help();
+            exit(0);
+        case ':':
+            return INVALID_ARGUMENTS;
+            break;
+        case '?':
+            return INVALID_ARGUMENTS;
+        }
+    }
+
+    // Scan the specified ports based on the provided options
+    if (port_provided && (min_port_provided || max_port_provided)) {
+        return INVALID_ARGUMENTS;
+    }
+    if (port_provided) {
+        min_port = max_port = port;
+    } else {
+        if (!min_port_provided) {
+            min_port = 1;
+        }
+        if (!max_port_provided) {
+            max_port = 65535;
+        }
+        if (min_port > max_port) {
+            return INVALID_ARGUMENTS;
+        }
+    }
+    return OK;
+}
+
+parse_result_t string_to_port(const char *str, uint16_t *port) {
+    char *endptr;
+    errno = 0;
+    unsigned long val = strtoul(str, &endptr, 10);
+    if (*endptr != '\0' || val == 0 || val > 65535 || errno == ERANGE) {
+        return INVALID_PORT;
+    }
+    *port = (uint16_t)val;
+    return OK;
+}
+
+scan_result_t scan_port(const char *ip, uint16_t port) {
     // Create a file descriptor for a TCP socket
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == -1) {
@@ -48,7 +141,7 @@ result_t scan_port(const char *ip, uint16_t port) {
         return UNKNOWN;
     }
 
-    result_t result;
+    scan_result_t result;
     // Attempt to connect to the server using the specified address and port
     // Note that the casting is necessary because connect() expects a pointer to a
     // struct sockaddr, and server_addr is of type struct sockaddr_in
@@ -70,17 +163,6 @@ result_t scan_port(const char *ip, uint16_t port) {
     close(fd);
 
     return result;
-}
-
-int string_to_port(const char *str, uint16_t *port) {
-    char *endptr;
-    errno = 0;
-    unsigned long val = strtoul(str, &endptr, 10);
-    if (*endptr != '\0' || val == 0 || val > 65535 || errno == ERANGE) {
-        return -1;
-    }
-    *port = (uint16_t)val;
-    return 0;
 }
 
 void help(void) {
