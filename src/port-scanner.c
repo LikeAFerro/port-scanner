@@ -21,13 +21,11 @@ int main(int argc, char *argv[]) {
         break;
     }
 
+    // Iterate through the specified port range and scan each port, printing the results to the
+    // console. If the verbose flag is set, also print closed ports.
     for (int p = config.min_port; p <= config.max_port; p++) {
-        // Call the scan_port function to check the status of the specified port on
-        // the given IP address
         scan_result_t result = scan_port(&config, p);
 
-        // Print the result of the port scan based on the value returned by
-        // scan_port
         switch (result) {
         case OPEN:
             printf("Port %d is OPEN on %s\n", p, config.ip);

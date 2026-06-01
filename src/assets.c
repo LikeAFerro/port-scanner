@@ -18,16 +18,16 @@ parse_result_t parse_arguments(int argc, char *argv[], config_t *config) {
     int opt;
     static struct option long_options[] = {OPTIONS(MAKE_OPTION){NULL, 0, NULL, 0}};
 
-    bool port_provided = false, min_port_provided = false, max_port_provided = false;
+    bool single_port_provided = false, min_port_provided = false, max_port_provided = false;
 
-    // Use getopt to parse command-line options and their arguments
+    // Use getopt_long to parse command-line options and their arguments
     while ((opt = getopt_long(argc, argv, OPTSTRING, long_options, NULL)) != -1) {
         switch (opt) {
         case 'p':
             if (string_to_port(optarg, &config->min_port) != OK) {
                 return INVALID_PORT;
             }
-            port_provided = true;
+            single_port_provided = true;
             break;
         case 'f':
             if (string_to_port(optarg, &config->min_port) != OK) {
@@ -60,11 +60,11 @@ parse_result_t parse_arguments(int argc, char *argv[], config_t *config) {
     }
     snprintf(config->ip, sizeof(config->ip), "%s", argv[optind]);
 
-    // Scan the specified ports based on the provided options
-    if (port_provided && (min_port_provided || max_port_provided)) {
+    // Validate that the port options are consistent (e.g., single port cannot be used with from/to)
+    if (single_port_provided && (min_port_provided || max_port_provided)) {
         return INVALID_ARGUMENTS;
     }
-    if (port_provided) {
+    if (single_port_provided) {
         config->max_port = config->min_port;
     } else {
         if (!min_port_provided) {
@@ -108,6 +108,8 @@ scan_result_t scan_port(const config_t *config, uint16_t port) {
 
     scan_result_t final_result = UNKNOWN;
 
+    // Iterate through the list of address structures returned by getaddrinfo and attempt to connect
+    // to each one
     for (p = res; p; p = p->ai_next) {
         fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
         if (fd == -1) {
@@ -141,9 +143,11 @@ scan_result_t scan_port(const config_t *config, uint16_t port) {
                 final_result = UNKNOWN;
             }
         }
+        // Continue trying other addresses if the connection fails, as some addresses may be
+        // filtered while others are open or closed
     }
 
-    freeaddrinfo(res);
+    freeaddrinfo(res); // Free the address information allocated by getaddrinfo
 
     return final_result;
 }
