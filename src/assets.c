@@ -16,7 +16,8 @@ parse_result_t parse_arguments(int argc, char *argv[], config_t *config) {
     }
 
     int opt;
-    static struct option long_options[] = {OPTIONS(MAKE_OPTION){NULL, 0, NULL, 0}};
+    static struct option long_options[] = {OPTIONS(MAKE_OPTION){
+        NULL, 0, NULL, 0}}; // Sentinel value to mark the end of the options array
 
     bool single_port_provided = false, min_port_provided = false, max_port_provided = false;
 
