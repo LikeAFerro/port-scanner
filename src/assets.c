@@ -9,7 +9,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-parse_result_t parse_arguments(int argc, char *argv[], config_t *config) {
+parse_result_t parse_arguments(int argc, char *argv[], config_t *config)
+{
     // Check if the required arguments are provided (at least the IP address)
     if (argc < 2) {
         return INVALID_ARGUMENTS;
@@ -81,7 +82,8 @@ parse_result_t parse_arguments(int argc, char *argv[], config_t *config) {
     return OK;
 }
 
-parse_result_t string_to_port(const char *str, uint16_t *port) {
+parse_result_t string_to_port(const char *str, uint16_t *port)
+{
     char *endptr;
     errno = 0;
     unsigned long val = strtoul(str, &endptr, 10);
@@ -92,7 +94,8 @@ parse_result_t string_to_port(const char *str, uint16_t *port) {
     return OK;
 }
 
-scan_result_t scan_port(const config_t *config, uint16_t port) {
+scan_result_t scan_port(const config_t *config, uint16_t port)
+{
     int fd;
     struct addrinfo hints, *res, *p;
     memset(&hints, 0, sizeof(hints));
@@ -153,7 +156,8 @@ scan_result_t scan_port(const config_t *config, uint16_t port) {
     return final_result;
 }
 
-void help(void) {
+void help(void)
+{
     printf("Usage: port-scanner {target_ip} [options]\n");
     printf("Example: port-scanner 192.168.1.1 -f 1 -t 1000\n");
     printf("Target IP address is required. Options:\n");

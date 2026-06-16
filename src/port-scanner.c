@@ -2,14 +2,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
 
     config_t config = {0};
     parse_result_t parse_result = parse_arguments(argc, argv, &config);
     switch (parse_result) {
     case INVALID_ARGUMENTS:
-        fprintf(
-            stderr, "Error parsing arguments. Check %s --help for usage information.\n", argv[0]);
+        fprintf(stderr, "Error parsing arguments. Check %s --help for usage information.\n",
+                argv[0]);
         exit(1);
     case INVALID_PORT:
         fprintf(stderr, "Error: Invalid port number.\n");
